@@ -1,7 +1,7 @@
 name: Build Rhema Windows EXE
 
 on:
-  workflow_dispatch:   # Lets you run it manually from the Actions tab
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build Tauri app
+      - name: Build Tauri app (skip beforeBuildCommand)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -32,3 +32,4 @@ jobs:
           releaseBody: 'Windows build from manual trigger.'
           releaseDraft: true
           includeDebug: false
+          args: -- --no-before-build --features windows
