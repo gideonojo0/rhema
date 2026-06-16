@@ -23,8 +23,9 @@ jobs:
         run: bun install
 
       - name: Fix beforeBuildCommand in tauri.conf.json
+        shell: pwsh
         run: |
-          sed -i 's/"beforeBuildCommand": "bun build"/"beforeBuildCommand": "bun run build"/' src-tauri/tauri.conf.json
+          (Get-Content src-tauri/tauri.conf.json) -replace '"beforeBuildCommand": "bun build"', '"beforeBuildCommand": "bun run build"' | Set-Content src-tauri/tauri.conf.json
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
