@@ -9,6 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Install Node.js and Bun
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -19,37 +20,49 @@ jobs:
         with:
           bun-version: latest
 
+      # Run the Windows setup script to install LLVM, CMake, and set LIBCLANG_PATH
+      - name: Run Windows setup script
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          ./scripts/setup-windows.ps1
+
+      # Install project dependencies
       - name: Install dependencies
         run: bun install
 
+      # Build the frontend (creates dist folder)
       - name: Build frontend with Vite
         run: bun run vite build
 
-      - name: Verify dist folder exists
+      # Patch tauri.conf.json to remove beforeBuildCommand
+      - name: Remove beforeBuildCommand from tauri.conf.json
+        shell: pwsh
         run: |
-          if (Test-Path dist) {
-            echo "dist folder exists"
+          $configPath = "src-tauri/tauri.conf.json"
+          $json = Get-Content $configPath -Raw | ConvertFrom-Json
+          if ($json.build.beforeBuildCommand) {
+            $json.build.PSObject.Properties.Remove('beforeBuildCommand')
+            $json | ConvertTo-Json -Depth 10 | Set-Content $configPath
+            Write-Host "Removed beforeBuildCommand from tauri.conf.json"
           } else {
-            echo "dist folder not found - checking for src/dist"
-            if (Test-Path src/dist) {
-              echo "src/dist exists - copying to root"
-              Copy-Item -Path src/dist -Destination dist -Recurse
-            } else {
-              echo "No dist folder found - creating one"
-              New-Item -Path dist -ItemType Directory
-            }
+            Write-Host "beforeBuildCommand not found, skipping"
           }
 
-      - name: Install Rust toolchain
+      # Install Rust toolchain
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build Tauri app with Cargo (skip beforeBuildCommand)
-        run: |
-          cargo tauri build -- --no-before-build --features windows
+      # Build the Tauri app using Cargo (bypasses tauri CLI's beforeBuildCommand)
+      - name: Build Tauri app
+        run: cargo tauri build --features windows
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
 
-      - name: Upload artifact
+      # Upload the built artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: rhema-windows
