@@ -22,10 +22,10 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Fix beforeBuildCommand in tauri.conf.json
+      - name: Fix beforeBuildCommand to skip TypeScript
         shell: pwsh
         run: |
-          (Get-Content src-tauri/tauri.conf.json) -replace '"beforeBuildCommand": "bun build"', '"beforeBuildCommand": "bun run build"' | Set-Content src-tauri/tauri.conf.json
+          (Get-Content src-tauri/tauri.conf.json) -replace '"beforeBuildCommand": "bun build"', '"beforeBuildCommand": "bun run vite build"' | Set-Content src-tauri/tauri.conf.json
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
