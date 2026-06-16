@@ -28,12 +28,32 @@ jobs:
           (Get-Content src-tauri/tauri.conf.json) -replace '"beforeBuildCommand": "bun build"', '"beforeBuildCommand": "bun run vite build"' | Set-Content src-tauri/tauri.conf.json
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        run: bun run tauri build
+
+      # ---------- UPLOAD ARTIFACTS (Always available) ----------
+      - name: Upload MSI installer as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhema-msi
+          path: src-tauri/target/release/bundle/msi/*.msi
+
+      - name: Upload NSIS installer (EXE) as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhema-exe
+          path: src-tauri/target/release/bundle/nsis/*.exe
+
+      # ---------- CREATE RELEASE (Only if GITHUB_TOKEN has permissions) ----------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: manual-build-${{ github.run_id }}
+          name: Manual Build ${{ github.run_id }}
+          body: Windows build from manual trigger.
+          draft: true
+          prerelease: false
+          files: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: manual-build-${{ github.run_id }}
-          releaseName: 'Manual Build ${{ github.run_id }}'
-          releaseBody: 'Windows build from manual trigger.'
-          releaseDraft: true
-          includeDebug: false
