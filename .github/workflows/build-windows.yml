@@ -1,4 +1,4 @@
-name: Build Rhema Windows EXE (Final)
+name: Build Rhema Windows EXE
 
 on:
   workflow_dispatch:
@@ -9,7 +9,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install Node.js and Bun
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -20,53 +19,20 @@ jobs:
         with:
           bun-version: latest
 
-      # Run the Windows setup script to install LLVM, CMake, and set LIBCLANG_PATH
-      - name: Run Windows setup script
-        shell: pwsh
-        run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          ./scripts/setup-windows.ps1
-
-      # Install project dependencies
       - name: Install dependencies
         run: bun install
 
-      # Build the frontend (creates dist folder)
-      - name: Build frontend with Vite
-        run: bun run vite build
-
-      # Patch tauri.conf.json to remove beforeBuildCommand
-      - name: Remove beforeBuildCommand from tauri.conf.json
-        shell: pwsh
+      - name: Fix beforeBuildCommand in tauri.conf.json
         run: |
-          $configPath = "src-tauri/tauri.conf.json"
-          $json = Get-Content $configPath -Raw | ConvertFrom-Json
-          if ($json.build.beforeBuildCommand) {
-            $json.build.PSObject.Properties.Remove('beforeBuildCommand')
-            $json | ConvertTo-Json -Depth 10 | Set-Content $configPath
-            Write-Host "Removed beforeBuildCommand from tauri.conf.json"
-          } else {
-            Write-Host "beforeBuildCommand not found, skipping"
-          }
+          sed -i 's/"beforeBuildCommand": "bun build"/"beforeBuildCommand": "bun run build"/' src-tauri/tauri.conf.json
 
-      # Install Rust toolchain
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      # Build the Tauri app using Cargo (bypasses tauri CLI's beforeBuildCommand)
       - name: Build Tauri app
-        run: cargo tauri build --features windows
+        uses: tauri-apps/tauri-action@v0
         env:
-          LIBCLANG_PATH: C:\Program Files\LLVM\bin
-
-      # Upload the built artifacts
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: rhema-windows
-          path: |
-            src-tauri/target/release/*.exe
-            src-tauri/target/release/bundle/**/*.exe
-            src-tauri/target/release/bundle/**/*.msi
+          tagName: manual-build-${{ github.run_id }}
+          releaseName: 'Manual Build ${{ github.run_id }}'
+          releaseBody: 'Windows build from manual trigger.'
+          releaseDraft: true
+          includeDebug: false
