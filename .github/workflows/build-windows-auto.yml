@@ -1,0 +1,106 @@
+name: Auto Build Windows EXE
+
+on:
+  # Run daily at 6 AM UTC
+  schedule:
+    - cron: '0 6 * * *'
+  # Allow manual trigger too
+  workflow_dispatch:
+
+jobs:
+  check-and-build:
+    runs-on: windows-latest
+    steps:
+      - name: Get latest commit from main repo
+        id: check
+        run: |
+          # Fetch the latest commit SHA from the main repository
+          $lastCommit = (Invoke-WebRequest -Uri "https://api.github.com/repos/openbezal/rhema/commits/main" -Headers @{"Authorization" = "Bearer ${{ secrets.GITHUB_TOKEN }}"}).Content | ConvertFrom-Json
+          $latestSha = $lastCommit.sha
+          echo "LATEST_SHA=$latestSha" >> $env:GITHUB_OUTPUT
+          echo "Latest commit SHA: $latestSha"
+        shell: pwsh
+
+      - name: Check if build needed
+        id: build-needed
+        run: |
+          # Compare with the last built commit (store in a file)
+          $lastBuilt = ""
+          if (Test-Path "last-built-commit.txt") {
+            $lastBuilt = Get-Content "last-built-commit.txt"
+          }
+          if ("${{ steps.check.outputs.LATEST_SHA }}" -ne $lastBuilt) {
+            echo "BUILD_NEEDED=true" >> $env:GITHUB_OUTPUT
+            echo "New commit detected! Building..."
+          } else {
+            echo "BUILD_NEEDED=false" >> $env:GITHUB_OUTPUT
+            echo "No new commits. Skipping build."
+          }
+        shell: pwsh
+
+      # This step only runs if a new commit is detected
+      - name: Build and release
+        if: steps.build-needed.outputs.BUILD_NEEDED == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: openbezal/rhema
+          ref: main
+          path: rhema-build
+
+      - name: Setup Node.js (only if building)
+        if: steps.build-needed.outputs.BUILD_NEEDED == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Bun (only if building)
+        if: steps.build-needed.outputs.BUILD_NEEDED == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies (only if building)
+        if: steps.build-needed.outputs.BUILD_NEEDED == 'true'
+        working-directory: rhema-build
+        run: bun install
+
+      - name: Fix beforeBuildCommand (only if building)
+        if: steps.build-needed.outputs.BUILD_NEEDED == 'true'
+        working-directory: rhema-build
+        shell: pwsh
+        run: |
+          (Get-Content src-tauri/tauri.conf.json) -replace '"beforeBuildCommand": "bun build"', '"beforeBuildCommand": "bun run vite build"' | Set-Content src-tauri/tauri.conf.json
+
+      - name: Build Tauri app (only if building)
+        if: steps.build-needed.outputs.BUILD_NEEDED == 'true'
+        working-directory: rhema-build
+        run: bun run tauri build
+
+      - name: Upload artifacts (only if building)
+        if: steps.build-needed.outputs.BUILD_NEEDED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhema-windows-${{ steps.check.outputs.LATEST_SHA }}
+          path: |
+            rhema-build/src-tauri/target/release/bundle/msi/*.msi
+            rhema-build/src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Create Release (only if building)
+        if: steps.build-needed.outputs.BUILD_NEEDED == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ steps.check.outputs.LATEST_SHA }}
+          name: Build from commit ${{ steps.check.outputs.LATEST_SHA }}
+          body: Auto-built from the latest commit on the main repository.
+          draft: false
+          prerelease: false
+          files: |
+            rhema-build/src-tauri/target/release/bundle/msi/*.msi
+            rhema-build/src-tauri/target/release/bundle/nsis/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save last built commit (only if building)
+        if: steps.build-needed.outputs.BUILD_NEEDED == 'true'
+        run: |
+          echo "${{ steps.check.outputs.LATEST_SHA }}" > last-built-commit.txt
